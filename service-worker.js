@@ -13,8 +13,16 @@ const urlsToCache = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // console.log('Caching static assets');
-      return cache.addAll(urlsToCache);
+      return Promise.all(
+        urlsToCache.map(url => {
+          return fetch(url).then(response => {
+            if (!response.ok) {
+              throw new Error(`Failed to fetch: ${url}`);
+            }
+            return cache.put(url, response);
+          });
+        })
+      );
     })
   );
 });
