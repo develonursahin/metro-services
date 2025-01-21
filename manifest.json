@@ -1,11 +1,11 @@
 {
-    "name": "service_dashboard",
-    "short_name": "service_dashboard",
+    "name": "Metro Servisler",
+    "short_name": "Metro Servisler",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFFFF",
     "theme_color": "#FFFFFFFF",
-    "description": "A new Flutter project.",
+    "description": "Metro İstanbul A.Ş",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
