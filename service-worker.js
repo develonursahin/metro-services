@@ -1,13 +1,13 @@
 const CACHE_NAME = 'flutter-cache-v1';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/main.dart.js',
-  '/flutter_service_worker.js',
-  '/favicon.png',
-  '/icons/Icon-192.png',
-  '/manifest.json',
+  '/metro-services/index.html',
+  '/metro-services/main.dart.js',
+  '/metro-services/flutter_service_worker.js',
+  '/metro-services/favicon.png',
+  '/metro-services/icons/Icon-192.png',
+  '/metro-services/manifest.json',
 ];
+
 
 // Install event - İlk defa service worker aktif olduğunda yapılacak işlemler
 self.addEventListener('install', (event) => {
