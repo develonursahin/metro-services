@@ -1,4 +1,6 @@
 const CACHE_NAME = 'flutter-cache-v1';
+const API_URL = '';
+
 const urlsToCache = [
   '/metro-services/index.html',
   '/metro-services/main.dart.js',
@@ -7,15 +9,20 @@ const urlsToCache = [
   '/metro-services/icons/Icon-192.png',
   '/metro-services/manifest.json',
 ];
-
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'set-api-url') {
+    self.API_URL = event.data.url; // API URL'sini client tarafından al
+  }
+});
 
 // Install event - İlk defa service worker aktif olduğunda yapılacak işlemler
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Yeni Service Worker'ın beklemeden aktif olması için
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return Promise.all(
-        urlsToCache.map(url => {
-          return fetch(url).then(response => {
+        urlsToCache.map((url) => {
+          return fetch(url).then((response) => {
             if (!response.ok) {
               throw new Error(`Failed to fetch: ${url}`);
             }
@@ -40,53 +47,63 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      clients.claim(); // Yeni Service Worker tüm clientları kontrol etmeye başlar
+      fetchApiData(); // İlk istek
+      scheduleNextFetch(); // Sonraki istekleri zamanla
     })
   );
 });
 
-self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'fetch-api') {
-      // console.log('Message received from Flutter:', event.data);
-      const apiUrl = event.data.apiUrl;
-  
-      // console.log('Fetching data from API');
-      // console.log('Fetching data from API:', apiUrl);
-      fetch(apiUrl)
-        .then(response => response.json())
-        .then(data => {
-          // console.log('API response:', data);
-          console.log('API fetched.');
-  
-          self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
-            // console.log('Clients found:', clients);
-  
-            if (clients.length === 0) {
-              console.log('No clients available for messaging');
-            } else {
-              clients.forEach(client => {
-                // console.log('Sending message to client:', client);
-                client.postMessage({
-                  type: 'data-from-service-worker',
-                  data: data,
-                });
-                // console.log('Message sent to client.');
-              });
-            }
-          }).catch(error => {
-            console.error('Error fetching clients:', error);
-          });
-        })
-        .catch(error => {
-          console.error('Error fetching data:', error);
-          self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
-            clients.forEach(client => {
-              client.postMessage({
-                type: 'fetch-error',
-                message: error.toString(),
-              });
-            });
+// Dakika başında API isteği tetikleyici
+function scheduleNextFetch() {
+  const now = new Date();
+  const seconds = now.getSeconds();
+  const milliseconds = now.getMilliseconds();
+
+  // Bir sonraki dakika başına kalan süreyi hesapla
+  const timeToNextMinute = (60 - seconds) * 1000 - milliseconds;
+
+  // Dakika başına zamanla
+  setTimeout(() => {
+    fetchApiData().then(() => {
+      scheduleNextFetch(); // Bir sonraki istek için zamanlama
+    });
+  }, timeToNextMinute);
+}
+
+function fetchApiData() {
+  return fetch(API_URL)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      return response.json();
+    })
+    .then((data) => {
+      // console.log('API Response:', data);
+
+      // Tüm clientlara veriyi gönder
+      self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'data-from-service-worker',
+            data: data,
           });
         });
-    }
-  });
-  
+      });
+    })
+    .catch((error) => {
+      console.error('Error fetching API data:', error);
+
+      // Hata durumunda clientlara bilgi gönder
+      self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'fetch-error',
+            message: error.toString(),
+          });
+        });
+      });
+    });
+}
