@@ -1,5 +1,5 @@
 const CACHE_NAME = 'flutter-cache-v1';
-const API_URL = ''; // API URL'sini buraya ekleyin
+const API_URL = '';
 
 const urlsToCache = [
   '/metro-services/index.html',
@@ -9,15 +9,13 @@ const urlsToCache = [
   '/metro-services/icons/Icon-192.png',
   '/metro-services/manifest.json',
 ];
-
-// API URL'sini client tarafından al
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'set-api-url') {
-    self.API_URL = event.data.url;
+    self.API_URL = event.data.url; // API URL'sini client tarafından al
   }
 });
 
-// Install event - İlk defa Service Worker aktif olduğunda yapılacak işlemler
+// Install event - İlk defa service worker aktif olduğunda yapılacak işlemler
 self.addEventListener('install', (event) => {
   self.skipWaiting(); // Yeni Service Worker'ın beklemeden aktif olması için
   event.waitUntil(
@@ -36,7 +34,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate event - Service Worker aktif olduğunda yapılacak işlemler
+// Activate event - Service worker aktif olduğunda yapılacak işlemler
 self.addEventListener('activate', (event) => {
   const cacheWhitelist = [CACHE_NAME];
 
@@ -51,31 +49,10 @@ self.addEventListener('activate', (event) => {
       );
     }).then(() => {
       clients.claim(); // Yeni Service Worker tüm clientları kontrol etmeye başlar
-      registerPeriodicSync(); // Periodic Sync'i kaydet
       fetchApiData(); // İlk istek
       scheduleNextFetch(); // Sonraki istekleri zamanla
     })
   );
-});
-
-// Periodic Sync kaydı
-async function registerPeriodicSync() {
-  const registration = await self.registration;
-  try {
-    await registration.periodicSync.register('fetch-data', {
-      minInterval: 60 * 1000, // 1 dakika
-    });
-    console.log('Periodic Sync registered');
-  } catch (e) {
-    console.error('Periodic Sync registration failed:', e);
-  }
-}
-
-// Periodic Sync olayını dinle
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'fetch-data') {
-    event.waitUntil(fetchApiData());
-  }
 });
 
 // Dakika başında API isteği tetikleyici
@@ -95,7 +72,6 @@ function scheduleNextFetch() {
   }, timeToNextMinute);
 }
 
-// API'den veri çekme işlemi
 function fetchApiData() {
   return fetch(API_URL)
     .then((response) => {
@@ -105,6 +81,8 @@ function fetchApiData() {
       return response.json();
     })
     .then((data) => {
+      // console.log('API Response:', data);
+
       // Tüm clientlara veriyi gönder
       self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
         clients.forEach((client) => {
@@ -129,12 +107,3 @@ function fetchApiData() {
       });
     });
 }
-
-// Service Worker'ı aktif tutmak için ping gönder
-setInterval(() => {
-  self.clients.matchAll().then((clients) => {
-    clients.forEach((client) => {
-      client.postMessage({ type: 'ping' });
-    });
-  });
-}, 30000); // 30 saniyede bir
