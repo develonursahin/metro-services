@@ -1,91 +1,42 @@
-const CACHE_NAME = 'flutter-cache-v1';
-const API_URL = '';
-
-const urlsToCache = [
-  '/metro-services/index.html',
-  '/metro-services/main.dart.js',
-  '/metro-services/flutter_service_worker.js',
-  '/metro-services/favicon.png',
-  '/metro-services/icons/Icon-192.png',
-  '/metro-services/manifest.json',
-];
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'set-api-url') {
-    self.API_URL = event.data.url; // API URL'sini client tarafından al
-  }
-});
-
-// Install event - İlk defa service worker aktif olduğunda yapılacak işlemler
-self.addEventListener('install', (event) => {
-  self.skipWaiting(); // Yeni Service Worker'ın beklemeden aktif olması için
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.all(
-        urlsToCache.map((url) => {
-          return fetch(url).then((response) => {
-            if (!response.ok) {
-              throw new Error(`Failed to fetch: ${url}`);
-            }
-            return cache.put(url, response);
-          });
-        })
-      );
-    })
-  );
-});
-
-// Activate event - Service worker aktif olduğunda yapılacak işlemler
+// Activate event - Service Worker aktif olduğunda yapılacak işlemler
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (!cacheWhitelist.includes(cacheName)) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => {
-      clients.claim(); // Yeni Service Worker tüm clientları kontrol etmeye başlar
-      fetchApiData(); // İlk istek
-      scheduleNextFetch(); // Sonraki istekleri zamanla
-    })
-  );
+  event.waitUntil(clients.claim()); // Tüm client'ları kontrol et
+  scheduleApiFetch(); // Tam dakika başlangıcında API zamanlamasını başlat
 });
 
-// Dakika başında API isteği tetikleyici
-function scheduleNextFetch() {
+// Tam dakikada API çağrısı yapmak için zamanlayıcı
+function scheduleApiFetch() {
   const now = new Date();
   const seconds = now.getSeconds();
   const milliseconds = now.getMilliseconds();
 
-  // Bir sonraki dakika başına kalan süreyi hesapla
+  // Sonraki tam dakikaya kadar geçen süreyi hesapla
   const timeToNextMinute = (60 - seconds) * 1000 - milliseconds;
 
-  // Dakika başına zamanla
+  // İlk isteği tam dakikada zamanla
   setTimeout(() => {
-    fetchApiData().then(() => {
-      scheduleNextFetch(); // Bir sonraki istek için zamanlama
-    });
+    fetchApiAndBroadcast(); // İlk isteği yap
+    setInterval(fetchApiAndBroadcast, 60000); // Her 1 dakikada bir tekrar et
   }, timeToNextMinute);
 }
 
-function fetchApiData() {
-  return fetch(API_URL)
-    .then((response) => {
+// API'den veri al ve istemcilere gönder
+function fetchApiAndBroadcast() {
+  const apiUrl = "https://metro-services-a80377f65047.herokuapp.com/services"; // API URL'nizi buraya ekleyin
+
+  fetch(apiUrl, { cache: 'no-store' }) // Veriyi her zaman taze almak için cache: 'no-store'
+    .then(response => {
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
       return response.json();
     })
-    .then((data) => {
-      // console.log('API Response:', data);
+    .then(data => {
+      console.log('API fetched at minute 00.', data);
 
-      // Tüm clientlara veriyi gönder
-      self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
-        clients.forEach((client) => {
+      // Tüm istemcilere veriyi gönder
+      self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+        clients.forEach(client => {
           client.postMessage({
             type: 'data-from-service-worker',
             data: data,
@@ -93,12 +44,12 @@ function fetchApiData() {
         });
       });
     })
-    .catch((error) => {
-      console.error('Error fetching API data:', error);
+    .catch(error => {
+      console.error('Error fetching data:', error);
 
-      // Hata durumunda clientlara bilgi gönder
-      self.clients.matchAll({ includeUncontrolled: true }).then((clients) => {
-        clients.forEach((client) => {
+      // Hata durumunda istemcilere bilgi gönder
+      self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+        clients.forEach(client => {
           client.postMessage({
             type: 'fetch-error',
             message: error.toString(),
@@ -107,3 +58,36 @@ function fetchApiData() {
       });
     });
 }
+
+// Mesaj dinleme
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'fetch-api') {
+    const apiUrl = event.data.apiUrl;
+
+    fetch(apiUrl, { cache: 'no-store' }) // Elle API çağrısı için de cache: 'no-store'
+      .then(response => response.json())
+      .then(data => {
+        console.log('API fetched manually.');
+
+        self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'data-from-service-worker',
+              data: data,
+            });
+          });
+        });
+      })
+      .catch(error => {
+        console.error('Error fetching data:', error);
+        self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'fetch-error',
+              message: error.toString(),
+            });
+          });
+        });
+      });
+  }
+});
